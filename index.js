@@ -6,7 +6,7 @@ import fs from "fs";
 // =======================
 // CONFIG
 // =======================
-const FONT_SIZE = 42;
+const FONT_SIZE = 37;
 const BOTTOM_MARGIN = 260;
 
 // =======================
