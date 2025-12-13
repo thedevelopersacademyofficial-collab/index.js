@@ -4,10 +4,10 @@ import { exec } from "child_process";
 import fs from "fs";
 
 // =======================
-// CONFIG
+// CONFIG (TikTok Optimized)
 // =======================
 const FONT_SIZE = 42;
-const BOTTOM_MARGIN = 140;
+const BOTTOM_MARGIN = 260;
 
 // =======================
 // HELPERS
@@ -37,10 +37,6 @@ app.post(
   ]),
   (req, res) => {
     try {
-      if (!req.files?.video || !req.files?.audio) {
-        return res.status(400).send("Video or audio missing");
-      }
-
       const video = req.files.video[0].path;
       const audio = req.files.audio[0].path;
       const output = `/tmp/output-${Date.now()}.mp4`;
@@ -52,11 +48,12 @@ app.post(
       const drawtext =
         `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
         `text='${text}':` +
+        `text_shaping=1:` +              // ✅ REQUIRED for newline
         `fontcolor=white:` +
         `borderw=4:` +
         `bordercolor=black:` +
         `fontsize=${FONT_SIZE}:` +
-        `line_spacing=10:` +
+        `line_spacing=12:` +
         `x=(w-text_w)/2:` +
         `y=h-${BOTTOM_MARGIN}`;
 
@@ -64,8 +61,7 @@ app.post(
         `ffmpeg -i ${video} -i ${audio} ` +
         `-vf "${drawtext}" ` +
         `-map 0:v -map 1:a ` +
-        `-c:v libx264 -preset veryfast ` +
-        `-c:a aac -shortest ${output}`;
+        `-c:v libx264 -c:a aac -shortest ${output}`;
 
       exec(ffmpegCmd, (err) => {
         if (err) {
@@ -79,6 +75,7 @@ app.post(
           fs.unlinkSync(output);
         });
       });
+
     } catch (e) {
       console.error("SERVER ERROR:", e.message);
       res.status(500).send(e.message);
