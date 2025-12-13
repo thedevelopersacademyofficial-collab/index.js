@@ -6,10 +6,10 @@ import fs from "fs";
 // =======================
 // CONFIG (TikTok Optimized)
 // =======================
-const STEP_SECONDS = 0.7;        // time per caption chunk
-const WORDS_PER_STEP = 3;       // show 2–3 words at once
+const WORDS_PER_CHUNK = 3;
 const FONT_SIZE = 52;
 const BOTTOM_MARGIN = 260;
+const MAX_CHARS_PER_LINE = 18;
 
 // =======================
 // HELPERS
@@ -23,30 +23,78 @@ function escapeFFmpeg(text) {
     .replace(/\n/g, " ");
 }
 
-function chunkWords(words, size) {
-  const chunks = [];
-  for (let i = 0; i < words.length; i += size) {
-    chunks.push(words.slice(i, i + size).join(" "));
-  }
-  return chunks;
+function wrapText(text) {
+  const words = text.split(" ");
+  let lines = [];
+  let current = "";
+
+  words.forEach(word => {
+    if ((current + " " + word).length > MAX_CHARS_PER_LINE) {
+      lines.push(current);
+      current = word;
+    } else {
+      current += (current ? " " : "") + word;
+    }
+  });
+
+  if (current) lines.push(current);
+  return lines.join("\\n");
 }
 
-function generateDynamicCaptionFilter(caption) {
-  if (!caption || !caption.trim()) return "";
+function wordDuration(word) {
+  let base = 0.22;
+  if (word.length > 6) base += 0.1;
+  if (/[.,!?]/.test(word)) base += 0.2;
+  return base;
+}
 
+function getAudioDuration(audioPath) {
+  return new Promise((resolve, reject) => {
+    exec(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${audioPath}`,
+      (err, stdout) => {
+        if (err) reject(err);
+        else resolve(parseFloat(stdout));
+      }
+    );
+  });
+}
+
+function generateDynamicKaraoke(caption, audioDuration) {
   const words = caption.split(/\s+/);
-  const chunks = chunkWords(words, WORDS_PER_STEP);
   let filters = [];
+  let currentTime = 0;
 
-  chunks.forEach((chunk, index) => {
-    const safeText = escapeFFmpeg(chunk);
-    const start = (index * STEP_SECONDS).toFixed(2);
-    const end = ((index + 1) * STEP_SECONDS).toFixed(2);
+  for (let i = 0; i < words.length; i++) {
+    const chunkWords = words.slice(i, i + WORDS_PER_CHUNK);
+    const chunkText = wrapText(chunkWords.join(" "));
+    const safeChunk = escapeFFmpeg(chunkText);
+    const safeWord = escapeFFmpeg(words[i]);
 
+    const duration = wordDuration(words[i]);
+    const start = currentTime.toFixed(2);
+    const end = (currentTime + duration).toFixed(2);
+    currentTime += duration;
+
+    // White multiline base
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeText}':` +
+      `text='${safeChunk}':` +
       `fontcolor=white:` +
+      `borderw=4:` +
+      `bordercolor=black:` +
+      `fontsize=${FONT_SIZE}:` +
+      `line_spacing=10:` +
+      `x=(w-text_w)/2:` +
+      `y=h-${BOTTOM_MARGIN}:` +
+      `enable='between(t,${start},${end})'`
+    );
+
+    // Yellow current word
+    filters.push(
+      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
+      `text='${safeWord}':` +
+      `fontcolor=yellow:` +
       `borderw=4:` +
       `bordercolor=black:` +
       `fontsize=${FONT_SIZE}:` +
@@ -54,7 +102,7 @@ function generateDynamicCaptionFilter(caption) {
       `y=h-${BOTTOM_MARGIN}:` +
       `enable='between(t,${start},${end})'`
     );
-  });
+  }
 
   return filters.join(",");
 }
@@ -74,17 +122,15 @@ app.post(
     { name: "video" },
     { name: "audio" }
   ]),
-  (req, res) => {
+  async (req, res) => {
     try {
       const video = req.files.video[0].path;
       const audio = req.files.audio[0].path;
       const caption = req.body.caption || "";
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      console.log("CAPTION:", caption);
-
-      const filter = generateDynamicCaptionFilter(caption);
-      console.log("FILTER:", filter);
+      const duration = await getAudioDuration(audio);
+      const filter = generateDynamicKaraoke(caption, duration);
 
       const ffmpegCmd =
         `ffmpeg -i ${video} -i ${audio} ` +
@@ -93,10 +139,7 @@ app.post(
         `-c:v libx264 -c:a aac -shortest ${output}`;
 
       exec(ffmpegCmd, (err) => {
-        if (err) {
-          console.error("FFMPEG ERROR:", err.message);
-          return res.status(500).send(err.message);
-        }
+        if (err) return res.status(500).send(err.message);
 
         res.sendFile(output, () => {
           fs.unlinkSync(video);
@@ -105,7 +148,6 @@ app.post(
         });
       });
     } catch (e) {
-      console.error("SERVER ERROR:", e.message);
       res.status(500).send(e.message);
     }
   }
