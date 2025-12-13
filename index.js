@@ -7,9 +7,9 @@ import fs from "fs";
 // CONFIG
 // =======================
 const STEP_SECONDS = 0.6;   // how long each word is highlighted
-const FONT_SIZE = 44;      // TikTok-friendly size
-const BOTTOM_MARGIN = 180; // distance from bottom
-
+const FONT_SIZE = 46;      // TikTok-friendly size
+const BOTTOM_MARGIN = 280; // distance from bottom
+const MAX_TEXT_WIDTH = 0.8; // 80% of video width
 // =======================
 // HELPERS
 // =======================
@@ -34,13 +34,15 @@ function generateKaraokeFilter(caption) {
 
   // Base white text (always visible)
   filters.push(
-    `drawtext=fontfile=/fonts/Roboto-Regular.ttf:` +
-    `text='${safeCaption}':` +
-    `fontcolor=white:` +
-    `fontsize=${FONT_SIZE}:` +
-    `x=(w-text_w)/2:` +
-    `y=h-${BOTTOM_MARGIN}`
-  );
+  `drawtext=fontfile=Roboto-Regular.ttf:` +
+  `text='${safeCaption}':` +
+  `fontcolor=white:` +
+  `fontsize=${FONT_SIZE}:` +
+  `line_spacing=6:` +
+  `max_text_width=w*${MAX_TEXT_WIDTH}:` +
+  `x=(w-text_w)/2:` +
+  `y=h-${BOTTOM_MARGIN}`
+);
 
   let offset = 0;
 
@@ -50,7 +52,7 @@ function generateKaraokeFilter(caption) {
     const end = ((i + 1) * STEP_SECONDS).toFixed(2);
 
     filters.push(
-      `drawtext=fontfile=/fonts/Roboto-Bold.ttf:` +
+      `drawtext=fontfile=Roboto-Bold.ttf:` +
       `text='${safeWord}':` +
       `fontcolor=yellow:` +
       `fontsize=${FONT_SIZE}:` +
