@@ -34,9 +34,9 @@ function getAudioDuration(audioPath) {
   });
 }
 
-// Build mask text where only active word is visible
-function buildHighlightMask(words, activeIndex) {
-  return words
+// Build highlight mask where ONLY active word is visible
+function buildHighlightMask(windowWords, activeIndex) {
+  return windowWords
     .map((w, i) => (i === activeIndex ? w : " ".repeat(w.length)))
     .join(" ");
 }
@@ -44,7 +44,7 @@ function buildHighlightMask(words, activeIndex) {
 // =======================
 // FILTER GENERATOR
 // =======================
-function generate3WordSlidingKaraoke(caption, audioDuration) {
+function generate3WordKaraoke(caption, audioDuration) {
   const words = caption.split(/\s+/);
   if (!words.length) return "";
 
@@ -52,23 +52,23 @@ function generate3WordSlidingKaraoke(caption, audioDuration) {
   let filters = [];
 
   for (let i = 0; i < words.length; i++) {
-    // Sliding 3-word window
     const windowWords = words.slice(i, i + WORDS_PER_WINDOW);
     if (!windowWords.length) continue;
 
-    const baseText = windowWords.join(" ");
-    const maskText = buildHighlightMask(windowWords, 0);
+    const baseText = escapeFFmpeg(windowWords.join(" "));
+    const activeIndex = 0; // always highlight first word in window
 
-    const safeBase = escapeFFmpeg(baseText);
-    const safeMask = escapeFFmpeg(maskText);
+    const maskText = escapeFFmpeg(
+      buildHighlightMask(windowWords, activeIndex)
+    );
 
     const start = (i * secondsPerWord).toFixed(2);
     const end = ((i + 1) * secondsPerWord).toFixed(2);
 
-    // White base text (3 words)
+    // White base text (ONLY during this word time)
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeBase}':` +
+      `text='${baseText}':` +
       `fontcolor=white:` +
       `borderw=4:` +
       `bordercolor=black:` +
@@ -78,10 +78,10 @@ function generate3WordSlidingKaraoke(caption, audioDuration) {
       `enable='between(t,${start},${end})'`
     );
 
-    // Yellow active word (inline highlight)
+    // Yellow highlighted word (inline illusion)
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeMask}':` +
+      `text='${maskText}':` +
       `fontcolor=yellow:` +
       `borderw=4:` +
       `bordercolor=black:` +
@@ -106,10 +106,7 @@ const upload = multer({ dest: "/tmp" });
 // =======================
 app.post(
   "/merge",
-  upload.fields([
-    { name: "video" },
-    { name: "audio" }
-  ]),
+  upload.fields([{ name: "video" }, { name: "audio" }]),
   async (req, res) => {
     try {
       const video = req.files.video[0].path;
@@ -118,7 +115,7 @@ app.post(
       const output = `/tmp/output-${Date.now()}.mp4`;
 
       const duration = await getAudioDuration(audio);
-      const filter = generate3WordSlidingKaraoke(caption, duration);
+      const filter = generate3WordKaraoke(caption, duration);
 
       const ffmpegCmd =
         `ffmpeg -i "${video}" -i "${audio}" ` +
