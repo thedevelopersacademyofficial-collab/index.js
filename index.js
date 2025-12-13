@@ -10,16 +10,6 @@ const FONT_SIZE = 42;
 const BOTTOM_MARGIN = 260;
 
 // =======================
-// HELPERS
-// =======================
-function escapeFFmpeg(text) {
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'");
-}
-
-// =======================
 // APP SETUP
 // =======================
 const app = express();
@@ -40,18 +30,17 @@ app.post(
       const audio = req.files.audio[0].path;
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      // ✅ REAL multiline text
-      const text = escapeFFmpeg(
-        `Porosit ne mesazhe apo
-Whatsapp: +383 49 37 30 37`
-      );
+      // ✅ MULTILINE TEXT FILE (THIS IS THE KEY)
+      const textContent = `Porosit ne mesazhe apo
+Whatsapp: +383 49 37 30 37`;
+
+      const textFile = `/tmp/text-${Date.now()}.txt`;
+      fs.writeFileSync(textFile, textContent, "utf8");
 
       const drawtext =
         `drawtext=` +
         `fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-        `text='${text}':` +
-        `escape_text=0:` +          // 🔥 REQUIRED
-        `text_shaping=1:` +         // 🔥 REQUIRED
+        `textfile=${textFile}:` +
         `fontcolor=white:` +
         `borderw=4:` +
         `bordercolor=black:` +
@@ -76,6 +65,7 @@ Whatsapp: +383 49 37 30 37`
           fs.unlinkSync(video);
           fs.unlinkSync(audio);
           fs.unlinkSync(output);
+          fs.unlinkSync(textFile);
         });
       });
 
