@@ -37,7 +37,7 @@ function generateKaraokeFilter(caption) {
   // Base white text (always visible)
   // =======================
   filters.push(
-    `drawtext=fontfile=Roboto-Regular.ttf:` +
+    `drawtext=fontfile=/opt/render/project/src/Roboto-Regular.ttf:` +
     `text='${safeCaption}':` +
     `fontcolor=white:` +
     `borderw=3:` +
@@ -60,7 +60,7 @@ function generateKaraokeFilter(caption) {
     const end = ((i + 1) * STEP_SECONDS).toFixed(2);
 
     filters.push(
-      `drawtext=fontfile=Roboto-Bold.ttf:` +
+      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
       `text='${safeWord}':` +
       `fontcolor=yellow:` +
       `borderw=3:` +
