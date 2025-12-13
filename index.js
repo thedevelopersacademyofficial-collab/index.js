@@ -6,10 +6,9 @@ import fs from "fs";
 // =======================
 // CONFIG (TikTok Optimized)
 // =======================
-const STEP_SECONDS = 0.6;        // duration per highlighted word
-const FONT_SIZE = 46;           // TikTok readable size
-const BOTTOM_MARGIN = 280;      // TikTok safe area (above buttons)
-const MAX_TEXT_WIDTH = 0.8;     // 80% of video width
+const STEP_SECONDS = 0.6;
+const FONT_SIZE = 46;
+const BOTTOM_MARGIN = 280;
 
 // =======================
 // HELPERS
@@ -23,7 +22,7 @@ function escapeFFmpeg(text) {
 }
 
 function estimateWidth(word) {
-  return word.length * 22; // rough but effective
+  return word.length * 22;
 }
 
 function generateKaraokeFilter(caption) {
@@ -33,9 +32,7 @@ function generateKaraokeFilter(caption) {
   const safeCaption = escapeFFmpeg(caption);
   let filters = [];
 
-  // =======================
-  // Base white text (always visible)
-  // =======================
+  // Base white text
   filters.push(
     `drawtext=fontfile=/opt/render/project/src/Roboto-Regular.ttf:` +
     `text='${safeCaption}':` +
@@ -44,16 +41,13 @@ function generateKaraokeFilter(caption) {
     `bordercolor=black:` +
     `fontsize=${FONT_SIZE}:` +
     `line_spacing=6:` +
-    `max_text_width=w*${MAX_TEXT_WIDTH}:` +
     `x=(w-text_w)/2:` +
     `y=h-${BOTTOM_MARGIN}`
   );
 
-  // =======================
-  // Yellow moving highlight
-  // =======================
   let offset = 0;
 
+  // Yellow word highlight
   words.forEach((word, i) => {
     const safeWord = escapeFFmpeg(word);
     const start = (i * STEP_SECONDS).toFixed(2);
@@ -99,19 +93,20 @@ app.post(
       const caption = req.body.caption || "";
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      const filter = generateKaraokeFilter(caption);
+      console.log("CAPTION:", caption);
 
-      const ffmpegCmd = filter
-        ? `ffmpeg -i ${video} -i ${audio} ` +
-          `-vf "${filter}" ` +
-          `-map 0:v -map 1:a ` +
-          `-c:v libx264 -c:a aac -shortest ${output}`
-        : `ffmpeg -i ${video} -i ${audio} ` +
-          `-map 0:v -map 1:a ` +
-          `-c:v libx264 -c:a aac -shortest ${output}`;
+      const filter = generateKaraokeFilter(caption);
+      console.log("FILTER:", filter);
+
+      const ffmpegCmd =
+        `ffmpeg -i ${video} -i ${audio} ` +
+        `-vf "${filter}" ` +
+        `-map 0:v -map 1:a ` +
+        `-c:v libx264 -c:a aac -shortest ${output}`;
 
       exec(ffmpegCmd, (err) => {
         if (err) {
+          console.error("FFMPEG ERROR:", err.message);
           return res.status(500).send(err.message);
         }
 
@@ -122,6 +117,7 @@ app.post(
         });
       });
     } catch (e) {
+      console.error("SERVER ERROR:", e.message);
       res.status(500).send(e.message);
     }
   }
