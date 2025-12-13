@@ -4,7 +4,7 @@ import { exec } from "child_process";
 import fs from "fs";
 
 // =======================
-// CONFIG (TikTok Optimized)
+// CONFIG
 // =======================
 const FONT_SIZE = 42;
 const BOTTOM_MARGIN = 260;
@@ -16,8 +16,7 @@ function escapeFFmpeg(text) {
   return text
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, "\\n");
+    .replace(/'/g, "\\'");
 }
 
 // =======================
@@ -41,24 +40,28 @@ app.post(
       const audio = req.files.audio[0].path;
       const output = `/tmp/output-${Date.now()}.mp4`;
 
+      // ✅ REAL multiline text
       const text = escapeFFmpeg(
-        "Porosit ne mesazhe apo\nWhatsapp: +383 49 37 30 37"
+        `Porosit ne mesazhe apo
+Whatsapp: +383 49 37 30 37`
       );
 
       const drawtext =
-        `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
+        `drawtext=` +
+        `fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
         `text='${text}':` +
-        `text_shaping=1:` +              // ✅ REQUIRED for newline
+        `escape_text=0:` +          // 🔥 REQUIRED
+        `text_shaping=1:` +         // 🔥 REQUIRED
         `fontcolor=white:` +
         `borderw=4:` +
         `bordercolor=black:` +
         `fontsize=${FONT_SIZE}:` +
-        `line_spacing=12:` +
+        `line_spacing=14:` +
         `x=(w-text_w)/2:` +
         `y=h-${BOTTOM_MARGIN}`;
 
       const ffmpegCmd =
-        `ffmpeg -i ${video} -i ${audio} ` +
+        `ffmpeg -y -i ${video} -i ${audio} ` +
         `-vf "${drawtext}" ` +
         `-map 0:v -map 1:a ` +
         `-c:v libx264 -c:a aac -shortest ${output}`;
