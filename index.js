@@ -4,12 +4,13 @@ import { exec } from "child_process";
 import fs from "fs";
 
 // =======================
-// CONFIG
+// CONFIG (TikTok Optimized)
 // =======================
-const STEP_SECONDS = 0.6;   // how long each word is highlighted
-const FONT_SIZE = 46;      // TikTok-friendly size
-const BOTTOM_MARGIN = 280; // distance from bottom
-const MAX_TEXT_WIDTH = 0.8; // 80% of video width
+const STEP_SECONDS = 0.6;        // duration per highlighted word
+const FONT_SIZE = 46;           // TikTok readable size
+const BOTTOM_MARGIN = 280;      // TikTok safe area (above buttons)
+const MAX_TEXT_WIDTH = 0.8;     // 80% of video width
+
 // =======================
 // HELPERS
 // =======================
@@ -22,7 +23,7 @@ function escapeFFmpeg(text) {
 }
 
 function estimateWidth(word) {
-  return word.length * 22; // rough width estimation
+  return word.length * 22; // rough but effective
 }
 
 function generateKaraokeFilter(caption) {
@@ -32,18 +33,25 @@ function generateKaraokeFilter(caption) {
   const safeCaption = escapeFFmpeg(caption);
   let filters = [];
 
+  // =======================
   // Base white text (always visible)
+  // =======================
   filters.push(
-  `drawtext=fontfile=Roboto-Regular.ttf:` +
-  `text='${safeCaption}':` +
-  `fontcolor=white:` +
-  `fontsize=${FONT_SIZE}:` +
-  `line_spacing=6:` +
-  `max_text_width=w*${MAX_TEXT_WIDTH}:` +
-  `x=(w-text_w)/2:` +
-  `y=h-${BOTTOM_MARGIN}`
-);
+    `drawtext=fontfile=Roboto-Regular.ttf:` +
+    `text='${safeCaption}':` +
+    `fontcolor=white:` +
+    `borderw=3:` +
+    `bordercolor=black:` +
+    `fontsize=${FONT_SIZE}:` +
+    `line_spacing=6:` +
+    `max_text_width=w*${MAX_TEXT_WIDTH}:` +
+    `x=(w-text_w)/2:` +
+    `y=h-${BOTTOM_MARGIN}`
+  );
 
+  // =======================
+  // Yellow moving highlight
+  // =======================
   let offset = 0;
 
   words.forEach((word, i) => {
@@ -55,6 +63,8 @@ function generateKaraokeFilter(caption) {
       `drawtext=fontfile=Roboto-Bold.ttf:` +
       `text='${safeWord}':` +
       `fontcolor=yellow:` +
+      `borderw=3:` +
+      `bordercolor=black:` +
       `fontsize=${FONT_SIZE}:` +
       `x=(w-text_w)/2+${offset}:` +
       `y=h-${BOTTOM_MARGIN}:` +
@@ -91,15 +101,14 @@ app.post(
 
       const filter = generateKaraokeFilter(caption);
 
-      const ffmpegCmd =
-        filter
-          ? `ffmpeg -i ${video} -i ${audio} ` +
-            `-vf "${filter}" ` +
-            `-map 0:v -map 1:a ` +
-            `-c:v libx264 -c:a aac -shortest ${output}`
-          : `ffmpeg -i ${video} -i ${audio} ` +
-            `-map 0:v -map 1:a ` +
-            `-c:v libx264 -c:a aac -shortest ${output}`;
+      const ffmpegCmd = filter
+        ? `ffmpeg -i ${video} -i ${audio} ` +
+          `-vf "${filter}" ` +
+          `-map 0:v -map 1:a ` +
+          `-c:v libx264 -c:a aac -shortest ${output}`
+        : `ffmpeg -i ${video} -i ${audio} ` +
+          `-map 0:v -map 1:a ` +
+          `-c:v libx264 -c:a aac -shortest ${output}`;
 
       exec(ffmpegCmd, (err) => {
         if (err) {
