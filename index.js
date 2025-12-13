@@ -4,11 +4,10 @@ import { exec } from "child_process";
 import fs from "fs";
 
 // =======================
-// CONFIG (TikTok Optimized)
+// CONFIG
 // =======================
-const WORDS_PER_WINDOW = 3;
-const FONT_SIZE = 52;
-const BOTTOM_MARGIN = 260;
+const FONT_SIZE = 42;
+const BOTTOM_MARGIN = 140;
 
 // =======================
 // HELPERS
@@ -18,81 +17,7 @@ function escapeFFmpeg(text) {
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'")
-    .replace(/%/g, "\\%")
-    .replace(/\n/g, " ");
-}
-
-function getAudioDuration(audioPath) {
-  return new Promise((resolve, reject) => {
-    exec(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
-      (err, stdout) => {
-        if (err) reject(err);
-        else resolve(parseFloat(stdout));
-      }
-    );
-  });
-}
-
-// Build highlight mask where ONLY active word is visible
-function buildHighlightMask(windowWords, activeIndex) {
-  return windowWords
-    .map((w, i) => (i === activeIndex ? w : " ".repeat(w.length)))
-    .join(" ");
-}
-
-// =======================
-// FILTER GENERATOR
-// =======================
-function generate3WordKaraoke(caption, audioDuration) {
-  const words = caption.split(/\s+/);
-  if (!words.length) return "";
-
-  const secondsPerWord = audioDuration / words.length;
-  let filters = [];
-
-  for (let i = 0; i < words.length; i++) {
-    const windowWords = words.slice(i, i + WORDS_PER_WINDOW);
-    if (!windowWords.length) continue;
-
-    const baseText = escapeFFmpeg(windowWords.join(" "));
-    const activeIndex = 0; // always highlight first word in window
-
-    const maskText = escapeFFmpeg(
-      buildHighlightMask(windowWords, activeIndex)
-    );
-
-    const start = (i * secondsPerWord).toFixed(2);
-    const end = ((i + 1) * secondsPerWord).toFixed(2);
-
-    // White base text (ONLY during this word time)
-    filters.push(
-      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${baseText}':` +
-      `fontcolor=white:` +
-      `borderw=4:` +
-      `bordercolor=black:` +
-      `fontsize=${FONT_SIZE}:` +
-      `x=(w-text_w)/2:` +
-      `y=h-${BOTTOM_MARGIN}:` +
-      `enable='between(t,${start},${end})'`
-    );
-
-    // Yellow highlighted word (inline illusion)
-    filters.push(
-      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${maskText}':` +
-      `fontcolor=yellow:` +
-      `borderw=4:` +
-      `bordercolor=black:` +
-      `fontsize=${FONT_SIZE}:` +
-      `x=(w-text_w)/2:` +
-      `y=h-${BOTTOM_MARGIN}:` +
-      `enable='between(t,${start},${end})'`
-    );
-  }
-
-  return filters.join(",");
+    .replace(/\n/g, "\\n");
 }
 
 // =======================
@@ -106,22 +31,41 @@ const upload = multer({ dest: "/tmp" });
 // =======================
 app.post(
   "/merge",
-  upload.fields([{ name: "video" }, { name: "audio" }]),
-  async (req, res) => {
+  upload.fields([
+    { name: "video" },
+    { name: "audio" }
+  ]),
+  (req, res) => {
     try {
+      if (!req.files?.video || !req.files?.audio) {
+        return res.status(400).send("Video or audio missing");
+      }
+
       const video = req.files.video[0].path;
       const audio = req.files.audio[0].path;
-      const caption = req.body.caption || "";
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      const duration = await getAudioDuration(audio);
-      const filter = generate3WordKaraoke(caption, duration);
+      const text = escapeFFmpeg(
+        "Porosit ne mesazhe apo\nWhatsapp: +383 49 37 30 37"
+      );
+
+      const drawtext =
+        `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
+        `text='${text}':` +
+        `fontcolor=white:` +
+        `borderw=4:` +
+        `bordercolor=black:` +
+        `fontsize=${FONT_SIZE}:` +
+        `line_spacing=10:` +
+        `x=(w-text_w)/2:` +
+        `y=h-${BOTTOM_MARGIN}`;
 
       const ffmpegCmd =
-        `ffmpeg -i "${video}" -i "${audio}" ` +
-        `-vf "${filter}" ` +
+        `ffmpeg -i ${video} -i ${audio} ` +
+        `-vf "${drawtext}" ` +
         `-map 0:v -map 1:a ` +
-        `-c:v libx264 -c:a aac -shortest "${output}"`;
+        `-c:v libx264 -preset veryfast ` +
+        `-c:a aac -shortest ${output}`;
 
       exec(ffmpegCmd, (err) => {
         if (err) {
