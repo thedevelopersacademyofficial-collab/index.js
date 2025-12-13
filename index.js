@@ -6,9 +6,10 @@ import fs from "fs";
 // =======================
 // CONFIG (TikTok Optimized)
 // =======================
-const STEP_SECONDS = 0.6;
-const FONT_SIZE = 46;
-const BOTTOM_MARGIN = 280;
+const STEP_SECONDS = 0.7;        // time per caption chunk
+const WORDS_PER_STEP = 3;       // show 2–3 words at once
+const FONT_SIZE = 52;
+const BOTTOM_MARGIN = 260;
 
 // =======================
 // HELPERS
@@ -22,52 +23,37 @@ function escapeFFmpeg(text) {
     .replace(/\n/g, " ");
 }
 
-
-function estimateWidth(word) {
-  return word.length * 22;
+function chunkWords(words, size) {
+  const chunks = [];
+  for (let i = 0; i < words.length; i += size) {
+    chunks.push(words.slice(i, i + size).join(" "));
+  }
+  return chunks;
 }
 
-function generateKaraokeFilter(caption) {
+function generateDynamicCaptionFilter(caption) {
   if (!caption || !caption.trim()) return "";
 
   const words = caption.split(/\s+/);
-  const safeCaption = escapeFFmpeg(caption);
+  const chunks = chunkWords(words, WORDS_PER_STEP);
   let filters = [];
 
-  // Base white text
-  filters.push(
-    `drawtext=fontfile=/opt/render/project/src/Roboto-Regular.ttf:` +
-    `text='${safeCaption}':` +
-    `fontcolor=white:` +
-    `borderw=3:` +
-    `bordercolor=black:` +
-    `fontsize=${FONT_SIZE}:` +
-    `line_spacing=6:` +
-    `x=(w-text_w)/2:` +
-    `y=h-${BOTTOM_MARGIN}`
-  );
-
-  let offset = 0;
-
-  // Yellow word highlight
-  words.forEach((word, i) => {
-    const safeWord = escapeFFmpeg(word);
-    const start = (i * STEP_SECONDS).toFixed(2);
-    const end = ((i + 1) * STEP_SECONDS).toFixed(2);
+  chunks.forEach((chunk, index) => {
+    const safeText = escapeFFmpeg(chunk);
+    const start = (index * STEP_SECONDS).toFixed(2);
+    const end = ((index + 1) * STEP_SECONDS).toFixed(2);
 
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeWord}':` +
-      `fontcolor=yellow:` +
-      `borderw=3:` +
+      `text='${safeText}':` +
+      `fontcolor=white:` +
+      `borderw=4:` +
       `bordercolor=black:` +
       `fontsize=${FONT_SIZE}:` +
-      `x=(w-text_w)/2+${offset}:` +
+      `x=(w-text_w)/2:` +
       `y=h-${BOTTOM_MARGIN}:` +
       `enable='between(t,${start},${end})'`
     );
-
-    offset += estimateWidth(word + " ");
   });
 
   return filters.join(",");
@@ -97,7 +83,7 @@ app.post(
 
       console.log("CAPTION:", caption);
 
-      const filter = generateKaraokeFilter(caption);
+      const filter = generateDynamicCaptionFilter(caption);
       console.log("FILTER:", filter);
 
       const ffmpegCmd =
