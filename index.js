@@ -6,10 +6,9 @@ import fs from "fs";
 // =======================
 // CONFIG (TikTok Optimized)
 // =======================
-const WORDS_PER_CHUNK = 3;
 const FONT_SIZE = 52;
 const BOTTOM_MARGIN = 260;
-const MAX_CHARS_PER_LINE = 18;
+const MAX_CHARS_PER_LINE = 20;
 
 // =======================
 // HELPERS
@@ -29,7 +28,7 @@ function wrapText(text) {
   let current = "";
 
   words.forEach(word => {
-    if ((current + " " + word).length > MAX_CHARS_PER_LINE) {
+    if ((current + " " + word).trim().length > MAX_CHARS_PER_LINE) {
       lines.push(current);
       current = word;
     } else {
@@ -38,14 +37,13 @@ function wrapText(text) {
   });
 
   if (current) lines.push(current);
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
-function wordDuration(word) {
-  let base = 0.22;
-  if (word.length > 6) base += 0.1;
-  if (/[.,!?]/.test(word)) base += 0.2;
-  return base;
+function highlightMask(words, index) {
+  return words
+    .map((w, i) => (i === index ? w : " ".repeat(w.length)))
+    .join(" ");
 }
 
 function getAudioDuration(audioPath) {
@@ -60,27 +58,41 @@ function getAudioDuration(audioPath) {
   });
 }
 
-function generateDynamicKaraoke(caption, audioDuration) {
+function generateInlineKaraoke(caption, audioDuration) {
   const words = caption.split(/\s+/);
+  const wrappedText = wrapText(caption);
+  const safeBase = escapeFFmpeg(wrappedText);
+
+  const secondsPerWord = audioDuration / words.length;
   let filters = [];
-  let currentTime = 0;
 
-  for (let i = 0; i < words.length; i++) {
-    const chunkWords = words.slice(i, i + WORDS_PER_CHUNK);
-    const chunkText = wrapText(chunkWords.join(" "));
-    const safeChunk = escapeFFmpeg(chunkText);
-    const safeWord = escapeFFmpeg(words[i]);
+  // Base white text (visible for full audio)
+  filters.push(
+    `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
+    `text='${safeBase}':` +
+    `fontcolor=white:` +
+    `borderw=4:` +
+    `bordercolor=black:` +
+    `fontsize=${FONT_SIZE}:` +
+    `line_spacing=10:` +
+    `x=(w-text_w)/2:` +
+    `y=h-${BOTTOM_MARGIN}:` +
+    `enable='between(t,0,${audioDuration.toFixed(2)})'`
+  );
 
-    const duration = wordDuration(words[i]);
-    const start = currentTime.toFixed(2);
-    const end = (currentTime + duration).toFixed(2);
-    currentTime += duration;
+  // Yellow inline highlight (one word at a time)
+  words.forEach((_, i) => {
+    const mask = highlightMask(words, i);
+    const wrappedMask = wrapText(mask);
+    const safeMask = escapeFFmpeg(wrappedMask);
 
-    // White multiline base
+    const start = (i * secondsPerWord).toFixed(2);
+    const end = ((i + 1) * secondsPerWord).toFixed(2);
+
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeChunk}':` +
-      `fontcolor=white:` +
+      `text='${safeMask}':` +
+      `fontcolor=yellow:` +
       `borderw=4:` +
       `bordercolor=black:` +
       `fontsize=${FONT_SIZE}:` +
@@ -89,20 +101,7 @@ function generateDynamicKaraoke(caption, audioDuration) {
       `y=h-${BOTTOM_MARGIN}:` +
       `enable='between(t,${start},${end})'`
     );
-
-    // Yellow current word
-    filters.push(
-      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-      `text='${safeWord}':` +
-      `fontcolor=yellow:` +
-      `borderw=4:` +
-      `bordercolor=black:` +
-      `fontsize=${FONT_SIZE}:` +
-      `x=(w-text_w)/2:` +
-      `y=h-${BOTTOM_MARGIN}:` +
-      `enable='between(t,${start},${end})'`
-    );
-  }
+  });
 
   return filters.join(",");
 }
@@ -118,10 +117,7 @@ const upload = multer({ dest: "/tmp" });
 // =======================
 app.post(
   "/merge",
-  upload.fields([
-    { name: "video" },
-    { name: "audio" }
-  ]),
+  upload.fields([{ name: "video" }, { name: "audio" }]),
   async (req, res) => {
     try {
       const video = req.files.video[0].path;
@@ -130,7 +126,7 @@ app.post(
       const output = `/tmp/output-${Date.now()}.mp4`;
 
       const duration = await getAudioDuration(audio);
-      const filter = generateDynamicKaraoke(caption, duration);
+      const filter = generateInlineKaraoke(caption, duration);
 
       const ffmpegCmd =
         `ffmpeg -i ${video} -i ${audio} ` +
