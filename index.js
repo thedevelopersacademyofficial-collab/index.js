@@ -18,8 +18,10 @@ function escapeFFmpeg(text) {
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'")
+    .replace(/%/g, "\\%")
     .replace(/\n/g, " ");
 }
+
 
 function estimateWidth(word) {
   return word.length * 22;
