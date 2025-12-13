@@ -6,9 +6,9 @@ import fs from "fs";
 // =======================
 // CONFIG (TikTok Optimized)
 // =======================
+const WORDS_PER_WINDOW = 3;
 const FONT_SIZE = 52;
 const BOTTOM_MARGIN = 260;
-const MAX_CHARS_PER_LINE = 20;
 
 // =======================
 // HELPERS
@@ -22,34 +22,10 @@ function escapeFFmpeg(text) {
     .replace(/\n/g, " ");
 }
 
-function wrapText(text) {
-  const words = text.split(" ");
-  let lines = [];
-  let current = "";
-
-  words.forEach(word => {
-    if ((current + " " + word).trim().length > MAX_CHARS_PER_LINE) {
-      lines.push(current);
-      current = word;
-    } else {
-      current += (current ? " " : "") + word;
-    }
-  });
-
-  if (current) lines.push(current);
-  return lines.join("\n");
-}
-
-function highlightMask(words, index) {
-  return words
-    .map((w, i) => (i === index ? w : " ".repeat(w.length)))
-    .join(" ");
-}
-
 function getAudioDuration(audioPath) {
   return new Promise((resolve, reject) => {
     exec(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${audioPath}`,
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
       (err, stdout) => {
         if (err) reject(err);
         else resolve(parseFloat(stdout));
@@ -58,37 +34,51 @@ function getAudioDuration(audioPath) {
   });
 }
 
-function generateInlineKaraoke(caption, audioDuration) {
+// Build mask text where only active word is visible
+function buildHighlightMask(words, activeIndex) {
+  return words
+    .map((w, i) => (i === activeIndex ? w : " ".repeat(w.length)))
+    .join(" ");
+}
+
+// =======================
+// FILTER GENERATOR
+// =======================
+function generate3WordSlidingKaraoke(caption, audioDuration) {
   const words = caption.split(/\s+/);
-  const wrappedText = wrapText(caption);
-  const safeBase = escapeFFmpeg(wrappedText);
+  if (!words.length) return "";
 
   const secondsPerWord = audioDuration / words.length;
   let filters = [];
 
-  // Base white text (visible for full audio)
-  filters.push(
-    `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-    `text='${safeBase}':` +
-    `fontcolor=white:` +
-    `borderw=4:` +
-    `bordercolor=black:` +
-    `fontsize=${FONT_SIZE}:` +
-    `line_spacing=10:` +
-    `x=(w-text_w)/2:` +
-    `y=h-${BOTTOM_MARGIN}:` +
-    `enable='between(t,0,${audioDuration.toFixed(2)})'`
-  );
+  for (let i = 0; i < words.length; i++) {
+    // Sliding 3-word window
+    const windowWords = words.slice(i, i + WORDS_PER_WINDOW);
+    if (!windowWords.length) continue;
 
-  // Yellow inline highlight (one word at a time)
-  words.forEach((_, i) => {
-    const mask = highlightMask(words, i);
-    const wrappedMask = wrapText(mask);
-    const safeMask = escapeFFmpeg(wrappedMask);
+    const baseText = windowWords.join(" ");
+    const maskText = buildHighlightMask(windowWords, 0);
+
+    const safeBase = escapeFFmpeg(baseText);
+    const safeMask = escapeFFmpeg(maskText);
 
     const start = (i * secondsPerWord).toFixed(2);
     const end = ((i + 1) * secondsPerWord).toFixed(2);
 
+    // White base text (3 words)
+    filters.push(
+      `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
+      `text='${safeBase}':` +
+      `fontcolor=white:` +
+      `borderw=4:` +
+      `bordercolor=black:` +
+      `fontsize=${FONT_SIZE}:` +
+      `x=(w-text_w)/2:` +
+      `y=h-${BOTTOM_MARGIN}:` +
+      `enable='between(t,${start},${end})'`
+    );
+
+    // Yellow active word (inline highlight)
     filters.push(
       `drawtext=fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
       `text='${safeMask}':` +
@@ -96,12 +86,11 @@ function generateInlineKaraoke(caption, audioDuration) {
       `borderw=4:` +
       `bordercolor=black:` +
       `fontsize=${FONT_SIZE}:` +
-      `line_spacing=10:` +
       `x=(w-text_w)/2:` +
       `y=h-${BOTTOM_MARGIN}:` +
       `enable='between(t,${start},${end})'`
     );
-  });
+  }
 
   return filters.join(",");
 }
@@ -117,7 +106,10 @@ const upload = multer({ dest: "/tmp" });
 // =======================
 app.post(
   "/merge",
-  upload.fields([{ name: "video" }, { name: "audio" }]),
+  upload.fields([
+    { name: "video" },
+    { name: "audio" }
+  ]),
   async (req, res) => {
     try {
       const video = req.files.video[0].path;
@@ -126,16 +118,19 @@ app.post(
       const output = `/tmp/output-${Date.now()}.mp4`;
 
       const duration = await getAudioDuration(audio);
-      const filter = generateInlineKaraoke(caption, duration);
+      const filter = generate3WordSlidingKaraoke(caption, duration);
 
       const ffmpegCmd =
-        `ffmpeg -i ${video} -i ${audio} ` +
+        `ffmpeg -i "${video}" -i "${audio}" ` +
         `-vf "${filter}" ` +
         `-map 0:v -map 1:a ` +
-        `-c:v libx264 -c:a aac -shortest ${output}`;
+        `-c:v libx264 -c:a aac -shortest "${output}"`;
 
       exec(ffmpegCmd, (err) => {
-        if (err) return res.status(500).send(err.message);
+        if (err) {
+          console.error("FFMPEG ERROR:", err.message);
+          return res.status(500).send(err.message);
+        }
 
         res.sendFile(output, () => {
           fs.unlinkSync(video);
@@ -144,6 +139,7 @@ app.post(
         });
       });
     } catch (e) {
+      console.error("SERVER ERROR:", e.message);
       res.status(500).send(e.message);
     }
   }
