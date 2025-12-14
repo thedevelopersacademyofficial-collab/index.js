@@ -26,11 +26,15 @@ app.post(
   ]),
   (req, res) => {
     try {
+      if (!req.files?.video || !req.files?.audio) {
+        return res.status(400).send("Video or audio missing");
+      }
+
       const video = req.files.video[0].path;
       const audio = req.files.audio[0].path;
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      // ✅ MULTILINE TEXT FILE (THIS IS THE KEY)
+      // ✅ MULTILINE TEXT FILE (RENDER-SAFE)
       const textContent = `Porosit ne mesazhe apo
 Whatsapp: +383 49 37 30 37`;
 
@@ -50,10 +54,14 @@ Whatsapp: +383 49 37 30 37`;
         `y=h-${BOTTOM_MARGIN}`;
 
       const ffmpegCmd =
-        `ffmpeg -y -i ${video} -i ${audio} ` +
+        `ffmpeg -y -i "${video}" -i "${audio}" ` +
         `-vf "${drawtext}" ` +
         `-map 0:v -map 1:a ` +
-        `-c:v libx264 -c:a aac -shortest ${output}`;
+        `-c:v libx264 ` +
+        `-preset ultrafast ` +       // 🚀 SHPEJTON, PA NDRYSHUAR REZOLUCION
+        `-movflags +faststart ` +     // ⚡ video hapet më shpejt
+        `-c:a aac ` +
+        `-shortest "${output}"`;
 
       exec(ffmpegCmd, (err) => {
         if (err) {
