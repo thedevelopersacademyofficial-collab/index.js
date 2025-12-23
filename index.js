@@ -7,7 +7,7 @@ import fs from "fs";
 // CONFIG
 // =======================
 const FONT_SIZE = 55;
-const BOTTOM_MARGIN = 350;
+const BOTTOM_MARGIN = 355;
 const FONT_PATH = "/opt/render/project/src/Roboto-Bold.ttf";
 
 // =======================
