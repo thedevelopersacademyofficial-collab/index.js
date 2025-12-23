@@ -2,12 +2,14 @@ import express from "express";
 import multer from "multer";
 import { exec } from "child_process";
 import fs from "fs";
+import path from "path";
 
 // =======================
 // CONFIG
 // =======================
 const FONT_SIZE = 37;
 const BOTTOM_MARGIN = 260;
+const FONT_PATH = "/opt/render/project/src/Roboto-Bold.ttf";
 
 // =======================
 // APP SETUP
@@ -34,34 +36,54 @@ app.post(
       const audio = req.files.audio[0].path;
       const output = `/tmp/output-${Date.now()}.mp4`;
 
-      // ✅ MULTILINE TEXT FILE (RENDER-SAFE)
+      // =======================
+      // MULTILINE TEXT (SAFE)
+      // =======================
       const textContent = `Porosit ne mesazhe apo
 Whatsapp: +383 49 37 30 37`;
 
       const textFile = `/tmp/text-${Date.now()}.txt`;
       fs.writeFileSync(textFile, textContent, "utf8");
 
-      const drawtext =
-        `drawtext=` +
-        `fontfile=/opt/render/project/src/Roboto-Bold.ttf:` +
-        `textfile=${textFile}:` +
-        `fontcolor=white:` +
-        `borderw=4:` +
-        `bordercolor=black:` +
-        `fontsize=${FONT_SIZE}:` +
-        `line_spacing=14:` +
-        `x=(w-text_w)/2:` +
-        `y=h-${BOTTOM_MARGIN}`;
+      // =======================
+      // VIDEO FILTERS
+      // =======================
+      const filterComplex = `
+[0:v]scale=1080:1920:force_original_aspect_ratio=increase,
+crop=1080:1920,
+boxblur=20:1,
+eq=brightness=-0.1[bg];
+[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];
+[bg][fg]overlay=(W-w)/2:(H-h)/2,
+drawtext=
+fontfile=${FONT_PATH}:
+textfile=${textFile}:
+fontcolor=white:
+borderw=4:
+bordercolor=black:
+fontsize=${FONT_SIZE}:
+line_spacing=14:
+x=(w-text_w)/2:
+y=h-${BOTTOM_MARGIN}
+`;
 
-      const ffmpegCmd =
-        `ffmpeg -y -i "${video}" -i "${audio}" ` +
-        `-vf "${drawtext}" ` +
-        `-map 0:v -map 1:a ` +
-        `-c:v libx264 ` +
-        `-preset ultrafast ` +       // 🚀 SHPEJTON, PA NDRYSHUAR REZOLUCION
-        `-movflags +faststart ` +     // ⚡ video hapet më shpejt
-        `-c:a aac ` +
-        `-shortest "${output}"`;
+      // =======================
+      // FFMPEG COMMAND
+      // =======================
+      const ffmpegCmd = `
+ffmpeg -y
+-i "${video}"
+-i "${audio}"
+-filter_complex "${filterComplex}"
+-map 0:v
+-map 1:a
+-c:v libx264
+-preset ultrafast
+-movflags +faststart
+-c:a aac
+-shortest
+"${output}"
+      `.replace(/\s+/g, " ").trim();
 
       exec(ffmpegCmd, (err) => {
         if (err) {
@@ -70,6 +92,7 @@ Whatsapp: +383 49 37 30 37`;
         }
 
         res.sendFile(output, () => {
+          // cleanup
           fs.unlinkSync(video);
           fs.unlinkSync(audio);
           fs.unlinkSync(output);
