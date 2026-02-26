@@ -71,8 +71,9 @@ app.post("/render", upload.single("video"), async (req, res) => {
     -map 0:v
     -map 0:a?
     -c:v libx264
-    -preset veryfast
-    -crf 23
+    -preset ultrafast
+    -crf 26
+    - threads 2
     -movflags +faststart
     -c:a aac
     -shortest
