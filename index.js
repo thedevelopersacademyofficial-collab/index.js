@@ -8,9 +8,9 @@ import path from "path";
 // CONFIG
 // =======================
 
-const FONT_SIZE = 90;
+const FONT_SIZE = 55;
 const BOTTOM_MARGIN = 320;
-const FONT_PATH = "/opt/render/project/src/Roboto-Bold.ttf";
+const FONT_PATH = "/opt/render/project/src/Montserrat-Bold.ttf";
 const OVERLAY_PATH = "/opt/render/project/src/reelstemplate.png";
 
 // =======================
@@ -49,12 +49,7 @@ app.post("/render", upload.single("video"), async (req, res) => {
     fontfile=${FONT_PATH}:
     text='${safePrice}':
     fontcolor=white:
-    borderw=4:
-    bordercolor=black:
     fontsize=${FONT_SIZE}:
-    shadowcolor=black:
-    shadowx=3:
-    shadowy=3:
     x=(w-text_w)/2:
     y=h-${BOTTOM_MARGIN}
     `;
