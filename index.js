@@ -9,7 +9,7 @@ import path from "path";
 // =======================
 
 const FONT_SIZE = 55;
-const BOTTOM_MARGIN = 300;
+const BOTTOM_MARGIN = 220;
 const FONT_PATH = "/opt/render/project/src/Montserrat-Bold.ttf";
 const OVERLAY_PATH = "/opt/render/project/src/reelstemplate.png";
 
