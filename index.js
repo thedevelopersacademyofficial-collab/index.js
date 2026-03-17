@@ -14,14 +14,14 @@ const FONT_PATH = "/opt/render/project/src/Montserrat-Bold.ttf";
 const OVERLAY_PATH = "/opt/render/project/src/reelstemplate.png";
 
 // =======================
-// APP SETUP
+// APP
 // =======================
 
 const app = express();
 const upload = multer({ dest: "/tmp" });
 
 // =======================
-// RENDER (VIDEO + AUDIO + PRICE)
+// RENDER CINEMATIC
 // =======================
 
 app.post("/render", upload.fields([
@@ -30,7 +30,7 @@ app.post("/render", upload.fields([
 ]), async (req, res) => {
   try {
     if (!req.files.video) {
-      return res.status(400).send("Video file missing");
+      return res.status(400).send("Video missing");
     }
 
     const videoPath = req.files.video[0].path;
@@ -39,16 +39,17 @@ app.post("/render", upload.fields([
 
     const outputPath = `/tmp/output-${Date.now()}.mp4`;
 
-    // Escape text safely
     const safePrice = price.replace(/'/g, "\\'");
 
     // =======================
-    // FILTER COMPLEX
+    // VIDEO FILTER (CINEMATIC LOOK)
     // =======================
 
-    const filterComplex = `
+    const videoFilter = `
       [0:v]scale=1080:1920:force_original_aspect_ratio=increase,
-      crop=1080:1920[v0];
+      crop=1080:1920,
+      eq=contrast=1.08:saturation=1.12:brightness=0.02,
+      unsharp=5:5:0.6:5:5:0.0[v0];
       [v0][1:v]overlay=0:0,
       drawtext=
       fontfile=${FONT_PATH}:
@@ -60,40 +61,49 @@ app.post("/render", upload.fields([
     `;
 
     // =======================
-    // BUILD FFMPEG COMMAND
+    // AUDIO FILTER (ADS STYLE)
     // =======================
 
-    let ffmpegCmd = `
+    const audioFilter = audioPath
+      ? "-filter:a \"loudnorm, equalizer=f=100:t=q:w=1:g=3\""
+      : "";
+
+    // =======================
+    // BUILD COMMAND
+    // =======================
+
+    let cmd = `
       ffmpeg -y
       -i "${videoPath}"
       -i "${OVERLAY_PATH}"
     `;
 
     if (audioPath) {
-      ffmpegCmd += ` -i "${audioPath}" `;
+      cmd += ` -i "${audioPath}" `;
     }
 
-    ffmpegCmd += `
-      -filter_complex "${filterComplex}"
+    cmd += `
+      -filter_complex "${videoFilter}"
       -map 0:v
       ${audioPath ? "-map 2:a" : "-map 0:a?"}
+      ${audioFilter}
       -c:v libx264
-      -preset ultrafast
-      -crf 26
-      -threads 2
+      -preset veryfast
+      -crf 23
       -movflags +faststart
       -c:a aac
+      -b:a 192k
       -shortest
       "${outputPath}"
     `;
 
-    ffmpegCmd = ffmpegCmd.replace(/\s+/g, " ").trim();
+    cmd = cmd.replace(/\s+/g, " ").trim();
 
     // =======================
     // EXECUTE
     // =======================
 
-    exec(ffmpegCmd, (err) => {
+    exec(cmd, (err) => {
       if (err) {
         console.error("FFMPEG ERROR:", err.message);
         return res.status(500).send(err.message);
@@ -106,22 +116,20 @@ app.post("/render", upload.fields([
           fs.unlinkSync(videoPath);
           if (audioPath) fs.unlinkSync(audioPath);
           fs.unlinkSync(outputPath);
-        } catch (cleanupErr) {
-          console.error("Cleanup error:", cleanupErr.message);
-        }
+        } catch (e) {}
       });
     });
 
-  } catch (error) {
-    console.error("SERVER ERROR:", error.message);
-    res.status(500).send(error.message);
+  } catch (err) {
+    console.error("SERVER ERROR:", err.message);
+    res.status(500).send(err.message);
   }
 });
 
 // =======================
-// START SERVER
+// START
 // =======================
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running...");
+  console.log("Cinematic engine running 🚀");
 });
