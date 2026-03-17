@@ -23,7 +23,9 @@ const upload = multer({ dest: "/tmp" });
 // =======================
 // RENDER CINEMATIC
 // =======================
-
+app.get("/", (req, res) => {
+  res.send("Server is running 🚀");
+});
 app.post("/render", upload.fields([
   { name: "video", maxCount: 1 },
   { name: "audio", maxCount: 1 }
