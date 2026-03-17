@@ -21,11 +21,17 @@ const app = express();
 const upload = multer({ dest: "/tmp" });
 
 // =======================
-// RENDER CINEMATIC
+// HEALTH CHECK (WAKE)
 // =======================
+
 app.get("/", (req, res) => {
-  res.send("Server is running 🚀");
+  res.send("Server running 🚀");
 });
+
+// =======================
+// RENDER ENGINE (2 STEP)
+// =======================
+
 app.post("/render", upload.fields([
   { name: "video", maxCount: 1 },
   { name: "audio", maxCount: 1 }
@@ -39,92 +45,99 @@ app.post("/render", upload.fields([
     const audioPath = req.files.audio ? req.files.audio[0].path : null;
     const price = req.body.price || "";
 
-    const outputPath = `/tmp/output-${Date.now()}.mp4`;
+    const tempVideo = `/tmp/temp-${Date.now()}.mp4`;
+    const finalOutput = `/tmp/output-${Date.now()}.mp4`;
 
     const safePrice = price.replace(/'/g, "\\'");
 
     // =======================
-    // VIDEO FILTER (CINEMATIC LOOK)
+    // STEP 1: VIDEO RENDER (NO AUDIO)
     // =======================
 
-    const videoFilter = `
-      [0:v]scale=1080:1920:force_original_aspect_ratio=increase,
-      crop=1080:1920,
-      eq=contrast=1.08:saturation=1.12:brightness=0.02,
-      unsharp=5:5:0.6:5:5:0.0[v0];
-      [v0][1:v]overlay=0:0,
-      drawtext=
-      fontfile=${FONT_PATH}:
-      text='${safePrice}':
-      fontcolor=white:
-      fontsize=${FONT_SIZE}:
-      x=(w-text_w)/2:
-      y=h-${BOTTOM_MARGIN}
-    `;
-
-    // =======================
-    // AUDIO FILTER (ADS STYLE)
-    // =======================
-
-    const audioFilter = audioPath
-      ? "-filter:a \"loudnorm, equalizer=f=100:t=q:w=1:g=3\""
-      : "";
-
-    // =======================
-    // BUILD COMMAND
-    // =======================
-
-    let cmd = `
+    const step1 = `
       ffmpeg -y
       -i "${videoPath}"
       -i "${OVERLAY_PATH}"
-    `;
-
-    if (audioPath) {
-      cmd += ` -i "${audioPath}" `;
-    }
-
-    cmd += `
-      -filter_complex "${videoFilter}"
+      -filter_complex "
+        [0:v]scale=1080:1920:force_original_aspect_ratio=increase,
+        crop=1080:1920[v0];
+        [v0][1:v]overlay=0:0,
+        drawtext=fontfile=${FONT_PATH}:
+        text='${safePrice}':
+        fontcolor=white:
+        fontsize=${FONT_SIZE}:
+        x=(w-text_w)/2:
+        y=h-${BOTTOM_MARGIN}
+      "
       -map 0:v
-      ${audioPath ? "-map 2:a" : "-map 0:a?"}
-      ${audioFilter}
       -c:v libx264
-      -preset veryfast
-      -crf 23
-      -movflags +faststart
-      -c:a aac
-      -b:a 192k
-      -shortest
-      "${outputPath}"
-    `;
+      -preset ultrafast
+      -crf 28
+      -threads 1
+      -an
+      "${tempVideo}"
+    `.replace(/\s+/g, " ").trim();
 
-    cmd = cmd.replace(/\s+/g, " ").trim();
-
-    // =======================
-    // EXECUTE
-    // =======================
-
-    exec(cmd, (err) => {
+    exec(step1, (err) => {
       if (err) {
-        console.error("FFMPEG ERROR:", err.message);
+        console.error("STEP1 ERROR:", err.message);
         return res.status(500).send(err.message);
       }
 
-      res.setHeader("Content-Type", "video/mp4");
+      // =======================
+      // STEP 2: MERGE AUDIO (LIGHT)
+      // =======================
 
-      res.sendFile(path.resolve(outputPath), () => {
-        try {
-          fs.unlinkSync(videoPath);
-          if (audioPath) fs.unlinkSync(audioPath);
-          fs.unlinkSync(outputPath);
-        } catch (e) {}
+      let step2;
+
+      if (audioPath) {
+        step2 = `
+          ffmpeg -y
+          -i "${tempVideo}"
+          -i "${audioPath}"
+          -map 0:v
+          -map 1:a
+          -c:v copy
+          -c:a aac
+          -b:a 128k
+          -shortest
+          "${finalOutput}"
+        `;
+      } else {
+        step2 = `
+          ffmpeg -y
+          -i "${tempVideo}"
+          -c copy
+          "${finalOutput}"
+        `;
+      }
+
+      step2 = step2.replace(/\s+/g, " ").trim();
+
+      exec(step2, (err2) => {
+        if (err2) {
+          console.error("STEP2 ERROR:", err2.message);
+          return res.status(500).send(err2.message);
+        }
+
+        res.setHeader("Content-Type", "video/mp4");
+
+        res.sendFile(path.resolve(finalOutput), () => {
+          try {
+            fs.unlinkSync(videoPath);
+            if (audioPath) fs.unlinkSync(audioPath);
+            fs.unlinkSync(tempVideo);
+            fs.unlinkSync(finalOutput);
+          } catch (e) {
+            console.error("Cleanup error:", e.message);
+          }
+        });
       });
     });
 
-  } catch (err) {
-    console.error("SERVER ERROR:", err.message);
-    res.status(500).send(err.message);
+  } catch (error) {
+    console.error("SERVER ERROR:", error.message);
+    res.status(500).send(error.message);
   }
 });
 
@@ -133,5 +146,5 @@ app.post("/render", upload.fields([
 // =======================
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("Cinematic engine running 🚀");
+  console.log("1080p Engine running 🚀");
 });
