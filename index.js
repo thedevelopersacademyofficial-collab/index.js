@@ -4,7 +4,7 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 
-const WATERMARK_PATH = "/opt/render/project/src/watermark.png";
+const WATERMARK_PATH = path.resolve("watermark.png");
 
 const app = express();
 const upload = multer({ dest: "/tmp" });
